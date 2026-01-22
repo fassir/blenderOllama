@@ -22,6 +22,26 @@ def ensure_googlesearch():
         return install_package("googlesearch-python")
     return True
 
+def get_blender_context():
+    """Gather context about the current Blender scene state."""
+    context = bpy.context
+    mode = context.mode
+    active_obj = context.active_object
+    selected_objs = context.selected_objects
+    
+    context_str = f"BLENDER CONTEXT:\nMode: {mode}\n"
+    
+    if active_obj:
+        context_str += f"Active Object: {active_obj.name} ({active_obj.type})\n"
+    
+    if selected_objs:
+        names = [o.name for o in selected_objs]
+        context_str += f"Selected Objects ({len(selected_objs)}): {', '.join(names)}\n"
+    else:
+        context_str += "Selected Objects: None\n"
+        
+    return context_str
+
 bl_info = {
     "name": "Ollama AI",
     "author": "Your Name",
@@ -108,7 +128,8 @@ class OLLAMA_OT_RunPrompt(bpy.types.Operator):
         
         library_text = f"should be {library}. " if library else ""
         
-        full_prompt = f"ONLY response with python code. No explanations. Import bpy. The code shall be written for blender. Always keep existing objects. Blender 4.3 \n{systemprompt}\n{library_text}{prompt}"
+        bl_context = get_blender_context()
+        full_prompt = f"ONLY response with python code. No explanations. Import bpy. The code shall be written for blender. Always keep existing objects. Blender 4.3 \n\n{bl_context}\n\n{systemprompt}\n{library_text}{prompt}"
         
         if context.scene.ollama_enhance_prompt:
             full_prompt += "\nEnhance prompts with steps."
@@ -189,7 +210,8 @@ class OLLAMA_OT_SendPrompt(bpy.types.Operator):
         
         library_text = f"library should be {library}. " if library else ""
         
-        full_prompt = f"ONLY response with python code. No explanations. Import bpy. The code shall be written for blender. Blender 4.3 \n{systemprompt}\n{library_text}{prompt}"
+        bl_context = get_blender_context()
+        full_prompt = f"ONLY response with python code. No explanations. Import bpy. The code shall be written for blender. Blender 4.3 \n\n{bl_context}\n\n{systemprompt}\n{library_text}{prompt}"
         
         if context.scene.ollama_enhance_prompt:
             full_prompt += "\nEnhance prompts with comments."
@@ -335,7 +357,8 @@ class OLLAMA_OT_DebugCode(bpy.types.Operator):
             else:
                 self.report({'WARNING'}, "Could not install googlesearch-python")
 
-        full_prompt = f"Fix the following Blender Python code. RETURN ONLY THE CORRECTED CODE directly. NO EXPLANATIONS. NO MARKDOWN. \n\nCode:\n{code_to_debug}\n\nError Context: {error_msg}\n{online_context}"
+        bl_context = get_blender_context()
+        full_prompt = f"Fix the following Blender Python code. RETURN ONLY THE CORRECTED CODE directly. NO EXPLANATIONS. NO MARKDOWN. \n\n{bl_context}\n\nCode:\n{code_to_debug}\n\nError Context: {error_msg}\n{online_context}"
         
         payload = {
             "model": model,
