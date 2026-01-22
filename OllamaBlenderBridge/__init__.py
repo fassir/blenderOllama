@@ -2,6 +2,25 @@ import bpy
 import re
 import http.client
 import json
+import subprocess
+import sys
+import pkg_resources
+
+def install_package(package):
+    """Install a package using pip inside Blender's python."""
+    python_exe = sys.executable
+    try:
+        subprocess.check_call([python_exe, "-m", "pip", "install", package])
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
+def ensure_googlesearch():
+    try:
+        pkg_resources.get_distribution("googlesearch-python")
+    except pkg_resources.DistributionNotFound:
+        return install_package("googlesearch-python")
+    return True
 
 bl_info = {
     "name": "Ollama AI",
@@ -67,8 +86,11 @@ class OLLAMA_PT_Panel(bpy.types.Panel):
         layout.label(text="Code Debugging:")
         layout.prop(scene, "ollama_debug_code", text="", placeholder="Paste code to debug here...")
         
+        layout.label(text="Error Message (Optional):")
+        layout.prop(scene, "ollama_error_msg", text="", placeholder="Paste error message here...")
+        
         row = layout.row()
-        row.prop(scene, "ollama_use_online", text="Enable Online Search")
+        row.prop(scene, "ollama_use_online", text="Enable Online Search (Google)")
         
         row = layout.row()
         row.operator("ollama.debug_code", text="Debug Code")
@@ -283,6 +305,7 @@ class OLLAMA_OT_DebugCode(bpy.types.Operator):
     
     def execute(self, context):
         code_to_debug = context.scene.ollama_debug_code
+        error_msg = context.scene.ollama_error_msg
         custom_model = context.scene.ollama_custom_model
         model = context.scene.ollama_model if not custom_model else custom_model
         use_online = context.scene.ollama_use_online
@@ -291,14 +314,28 @@ class OLLAMA_OT_DebugCode(bpy.types.Operator):
             self.report({'WARNING'}, "No code to debug!")
             return {'CANCELLED'}
             
-        # Placeholder for online search logic
         online_context = ""
         if use_online:
-            # Here we would add logic to search the web
-            # For now, we just pass a note or do nothing extra
-            pass
+            self.report({'INFO'}, "Checking dependencies and searching online...")
+            if ensure_googlesearch():
+                try:
+                    from googlesearch import search
+                    query = f"Blender python {error_msg} {code_to_debug[:50]}"
+                    search_results = []
+                    # Search specifically for blender python related issues
+                    for j in search(query, num_results=3, advanced=True):
+                        search_results.append(f"Title: {j.title}\nDescription: {j.description}\nURL: {j.url}")
+                    
+                    if search_results:
+                        online_context = "\n\nSearch Results for context:\n" + "\n---\n".join(search_results)
+                    else:
+                        online_context = "\n\n(No search results found)"
+                except Exception as e:
+                    online_context = f"\n\n(Online search failed: {str(e)})"
+            else:
+                self.report({'WARNING'}, "Could not install googlesearch-python")
 
-        full_prompt = f"Fix the following Blender Python code. RETURN ONLY THE CORRECTED CODE directly. NO EXPLANATIONS. NO MARKDOWN. \n\n{code_to_debug}"
+        full_prompt = f"Fix the following Blender Python code. RETURN ONLY THE CORRECTED CODE directly. NO EXPLANATIONS. NO MARKDOWN. \n\nCode:\n{code_to_debug}\n\nError Context: {error_msg}\n{online_context}"
         
         payload = {
             "model": model,
@@ -373,7 +410,8 @@ def register():
     bpy.types.Scene.ollama_include_last_response = bpy.props.BoolProperty(name="Include Last Response", default=False)
     bpy.types.Scene.ollama_enhance_prompt = bpy.props.BoolProperty(name="Enhance Prompt with Steps", default=False)
     bpy.types.Scene.ollama_debug_code = bpy.props.StringProperty(name="Code to Debug", default="", description="Paste code here to debug")
-    bpy.types.Scene.ollama_use_online = bpy.props.BoolProperty(name="Enable Online Search", default=False, description="Search the internet for solutions (Not implemented yet)")
+    bpy.types.Scene.ollama_error_msg = bpy.props.StringProperty(name="Error Message", default="", description="Optional error message to help search")
+    bpy.types.Scene.ollama_use_online = bpy.props.BoolProperty(name="Enable Online Search", default=False, description="Search Google for solutions")
 
 def unregister():
     for cls in reversed(classes):
@@ -388,6 +426,7 @@ def unregister():
     del bpy.types.Scene.ollama_include_last_response
     del bpy.types.Scene.ollama_enhance_prompt
     del bpy.types.Scene.ollama_debug_code
+    del bpy.types.Scene.ollama_error_msg
     del bpy.types.Scene.ollama_use_online
 
 if __name__ == "__main__":
